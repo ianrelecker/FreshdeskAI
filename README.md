@@ -86,7 +86,7 @@ If you prefer to set up manually:
 
 2. Open your web browser and navigate to:
    ```
-   http://localhost:8001
+   http://localhost:8004
    ```
 
 3. The dashboard will display your tickets with AI-generated draft responses
