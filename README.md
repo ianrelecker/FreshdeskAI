@@ -2,7 +2,6 @@
 
 An open-source tool that integrates with Freshdesk to generate intelligent AI responses for support tickets, with specialized tech instructions for support agents.
 
-![Freshdesk AI Assistant](https://github.com/yourusername/freshdesk-ai-assistant/raw/main/screenshots/dashboard.png)
 
 ## Features
 
