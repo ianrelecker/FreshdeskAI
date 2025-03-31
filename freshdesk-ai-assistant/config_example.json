@@ -1,0 +1,19 @@
+{
+  "freshdesk": {
+    "domain": "subdomain.freshdesk.com",
+    "api_key": "your_freshdesk_api_key_here",
+    "rate_limit_delay": 3.0,
+    "retry_delay": 5.0,
+    "max_retries": 5,
+    "ticket_limit": 10
+  },
+  "openai": {
+    "api_key": "your_openai_api_key_here",
+    "model": "gpt-4o-mini"
+  },
+  "app": {
+    "poll_interval_seconds": 300,
+    "secret_key": "generate-a-secure-random-key",
+    "debug": true
+  }
+}

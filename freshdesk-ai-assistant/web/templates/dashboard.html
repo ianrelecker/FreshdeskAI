@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - AI-Powered Freshdesk Ticket Assistant{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1 class="display-5">
+            <i class="fas fa-ticket-alt me-2"></i> Ticket Dashboard
+        </h1>
+        <p class="lead">View and manage your Freshdesk tickets with AI-generated responses</p>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-light">
+        <div class="row align-items-center">
+            <div class="col">
+                <h5 class="mb-0">
+                    <i class="fas fa-list me-2"></i> Tickets
+                </h5>
+            </div>
+            <div class="col-auto">
+                <div class="input-group">
+                    <input type="text" class="form-control" id="ticketSearch" placeholder="Search tickets...">
+                    <button class="btn btn-outline-secondary" type="button" id="clearSearch">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped mb-0" id="ticketsTable">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Subject</th>
+                        <th>Requester</th>
+                        <th>Status</th>
+                        <th>Updated</th>
+                        <th>AI Response</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if tickets %}
+                        {% for ticket in tickets %}
+                            <tr data-ticket-id="{{ ticket.freshdesk_id }}">
+                                <td>{{ ticket.freshdesk_id }}</td>
+                                <td>
+                                    <a href="{{ url_for('main.ticket_detail', freshdesk_id=ticket.freshdesk_id) }}" class="text-decoration-none">
+                                        {{ ticket.subject }}
+                                    </a>
+                                </td>
+                                <td>{{ ticket.requester_name }}</td>
+                                <td>
+                                    <span class="badge bg-{{ ticket.status|status_color }}">
+                                        {{ ticket.status }}
+                                    </span>
+                                </td>
+                                <td>{{ ticket.updated_at|format_datetime }}</td>
+                                <td>
+                                    {% if ticket.has_response %}
+                                        {% if ticket.response_sent %}
+                                            <span class="badge bg-success">Sent</span>
+                                        {% else %}
+                                            <span class="badge bg-info">Draft</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="badge bg-secondary">Pending</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('main.ticket_detail', freshdesk_id=ticket.freshdesk_id) }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-eye"></i> View
+                                    </a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center py-4">
+                                <div class="text-muted">
+                                    <i class="fas fa-inbox fa-2x mb-3"></i>
+                                    <p>No tickets found. Click "Refresh Tickets" to import tickets from Freshdesk. Responses must be generated manually from the ticket detail page.</p>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Modal -->
+<div class="modal fade" id="loadingModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <h5 id="loadingMessage">Refreshing tickets...</h5>
+                <p class="text-muted" id="loadingSubMessage">This may take a moment</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(document).ready(function() {
+        // Refresh tickets button
+        $('#refreshTicketsBtn').click(function(e) {
+            e.preventDefault();
+            
+            // Show loading modal
+            $('#loadingMessage').text('Refreshing tickets...');
+            $('#loadingSubMessage').text('This may take a moment');
+            $('#loadingModal').modal('show');
+            
+            // Call the refresh API
+            $.ajax({
+                url: "{{ url_for('main.refresh_tickets_api') }}",
+                type: 'POST',
+                success: function(data) {
+                    // Update loading message
+                    $('#loadingMessage').text('Tickets refreshed successfully!');
+                    $('#loadingSubMessage').text(`Imported ${data.imported} tickets. Go to ticket details to generate responses.`);
+                    
+                    // Reload the page after a short delay
+                    setTimeout(function() {
+                        location.reload();
+                    }, 1500);
+                },
+                error: function(xhr) {
+                    // Hide loading modal
+                    $('#loadingModal').modal('hide');
+                    
+                    // Get error message from response if available
+                    let errorMessage = 'Failed to refresh tickets. Please try again.';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMessage = xhr.responseJSON.error;
+                    }
+                    
+                    // Show error alert
+                    alert(errorMessage);
+                }
+            });
+        });
+        
+        // Search functionality
+        $('#ticketSearch').on('keyup', function() {
+            var value = $(this).val().toLowerCase();
+            $('#ticketsTable tbody tr').filter(function() {
+                $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1);
+            });
+        });
+        
+        // Clear search
+        $('#clearSearch').click(function() {
+            $('#ticketSearch').val('');
+            $('#ticketsTable tbody tr').show();
+        });
+    });
+</script>
+{% endblock %}

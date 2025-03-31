@@ -1,0 +1,502 @@
+{% extends "base.html" %}
+
+{% block title %}Ticket #{{ ticket.freshdesk_id }} - AI-Powered Freshdesk Ticket Assistant{% endblock %}
+
+{% block head_extra %}
+<!-- Add SimpleMDE for Markdown editing -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.css">
+<script src="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Dashboard</a></li>
+                <li class="breadcrumb-item active">Ticket #{{ ticket.freshdesk_id }}</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col">
+        <h1 class="h3">
+            <i class="fas fa-ticket-alt me-2"></i> {{ ticket.subject }}
+        </h1>
+        <div class="d-flex align-items-center mt-2">
+            <span class="badge bg-{{ ticket.status|status_color }} me-2">{{ ticket.status }}</span>
+            <span class="text-muted">
+                <i class="fas fa-user me-1"></i> {{ ticket.requester_name }} ({{ ticket.requester_email }})
+            </span>
+            <span class="text-muted ms-3">
+                <i class="fas fa-clock me-1"></i> Created: {{ ticket.created_at|format_datetime }}
+            </span>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Ticket Conversation -->
+    <div class="col-md-6">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">
+                    <i class="fas fa-comments me-2"></i> Conversation History
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="ticket-description mb-4">
+                    <h6 class="fw-bold">Original Description:</h6>
+                    <div class="p-3 bg-light rounded">
+                        {{ ticket.description|nl2br|safe }}
+                    </div>
+                </div>
+                
+                {% if conversations %}
+                    <div class="conversation-timeline">
+                        {% for conversation in conversations %}
+                            <div class="conversation-item mb-4 email-thread-item">
+                                <div class="email-header d-flex align-items-center mb-2 p-2 rounded-top {% if loop.index is divisibleby(2) %}bg-light{% else %}bg-primary bg-opacity-10{% endif %}">
+                                    <div class="me-auto">
+                                        <strong>{{ conversation.from_email }}</strong>
+                                    </div>
+                                    <div class="text-muted">
+                                        <i class="fas fa-clock me-1"></i>
+                                        <small>{{ conversation.created_at|format_datetime }}</small>
+                                    </div>
+                                </div>
+                                <div class="email-body p-3 border {% if loop.index is divisibleby(2) %}border-light{% else %}border-primary border-opacity-25{% endif %} rounded-bottom">
+                                    {{ conversation.body|nl2br|safe }}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-comments fa-2x mb-3"></i>
+                        <p>No conversation history available.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- AI Response -->
+    <div class="col-md-6">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light">
+                <div class="d-flex align-items-center">
+                    <h5 class="mb-0 me-auto">
+                        <i class="fas fa-robot me-2"></i> AI-Generated Response
+                    </h5>
+                    {% if response %}
+                        {% if response.is_sent %}
+                            <span class="badge bg-success">Sent</span>
+                        {% else %}
+                            <span class="badge bg-info">Draft</span>
+                        {% endif %}
+                        {% if response.is_final_solution %}
+                            <span class="badge bg-success ms-2">Final Solution</span>
+                        {% else %}
+                            <span class="badge bg-warning ms-2">Needs Follow-up</span>
+                        {% endif %}
+                    {% else %}
+                        <span class="badge bg-secondary">Pending</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-body">
+                {% if response %}
+                    <form id="responseForm">
+                        <input type="hidden" id="responseId" value="{{ response.id }}">
+                        <div class="mb-3">
+                            <label for="responseEditor" class="form-label">Edit Response:</label>
+                            <textarea id="responseEditor" class="form-control">{{ response.final_content }}</textarea>
+                        </div>
+                        {% if response.tech_instructions %}
+                        <div class="mb-3">
+                            <label class="form-label">
+                                <i class="fas fa-tools me-1"></i> Tech Instructions:
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="toggleTechInstructions">
+                                    <i class="fas fa-eye-slash"></i> Show/Hide
+                                </button>
+                            </label>
+                            <div class="p-3 bg-light rounded" id="techInstructionsContent">
+                                {{ response.tech_instructions|nl2br|safe }}
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        {% if response.follow_up_questions %}
+                        <div class="mb-3">
+                            <label class="form-label">
+                                <i class="fas fa-question-circle me-1"></i> Suggested Follow-up Questions:
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="toggleFollowUpQuestions">
+                                    <i class="fas fa-eye-slash"></i> Show/Hide
+                                </button>
+                            </label>
+                            <div class="p-3 bg-light rounded" id="followUpQuestionsContent">
+                                <ol class="mb-0">
+                                    {% for question in response.follow_up_questions|from_json %}
+                                        <li>{{ question }}</li>
+                                    {% endfor %}
+                                </ol>
+                            </div>
+                            <button type="button" id="insertQuestionsBtn" class="btn btn-sm btn-outline-primary mt-2">
+                                <i class="fas fa-plus me-1"></i> Insert into Response
+                            </button>
+                        </div>
+                        {% endif %}
+                        
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <button type="button" id="saveResponseBtn" class="btn btn-primary">
+                                    <i class="fas fa-save me-1"></i> Save Changes
+                                </button>
+                                <button type="button" id="regenerateResponseBtn" class="btn btn-warning ms-2">
+                                    <i class="fas fa-sync-alt me-1"></i> Generate New Response
+                                </button>
+                            </div>
+                            {% if not response.is_sent %}
+                                <button type="button" id="sendResponseBtn" class="btn btn-success">
+                                    <i class="fas fa-paper-plane me-1"></i> Send to Freshdesk
+                                </button>
+                            {% endif %}
+                        </div>
+                    </form>
+                    
+                    <div class="alert alert-success mt-3 d-none" id="saveSuccess">
+                        <i class="fas fa-check-circle me-1"></i> Response saved successfully!
+                    </div>
+                    
+                    <div class="alert alert-danger mt-3 d-none" id="saveError">
+                        <i class="fas fa-exclamation-circle me-1"></i> <span id="errorMessage">Error saving response.</span>
+                    </div>
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-robot fa-2x mb-3"></i>
+                        <p>No AI response generated yet.</p>
+                        <div class="d-flex justify-content-center gap-2">
+                            <button type="button" id="generateResponseBtn" class="btn btn-primary">
+                                <i class="fas fa-magic me-1"></i> Generate Customer Response
+                            </button>
+                            <button type="button" id="generateTechInstructionsBtn" class="btn btn-secondary">
+                                <i class="fas fa-tools me-1"></i> Generate Tech Instructions
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-danger mt-3 d-none" id="generateError">
+                        <i class="fas fa-exclamation-circle me-1"></i> <span id="generateErrorMessage">Error generating response.</span>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sending Modal -->
+<div class="modal fade" id="sendingModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <h5>Sending response to Freshdesk...</h5>
+                <p class="text-muted">This may take a moment</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Success Modal -->
+<div class="modal fade" id="successModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center py-4">
+                <div class="text-success mb-3">
+                    <i class="fas fa-check-circle fa-4x"></i>
+                </div>
+                <h5>Response sent successfully!</h5>
+                <p class="text-muted">Your response has been posted to Freshdesk.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(document).ready(function() {
+        // Initialize SimpleMDE if response exists
+        var simplemde;
+        if ($('#responseEditor').length) {
+            simplemde = new SimpleMDE({
+                element: document.getElementById("responseEditor"),
+                spellChecker: true,
+                autosave: {
+                    enabled: true,
+                    uniqueId: "ticket_{{ ticket.freshdesk_id }}_response",
+                    delay: 1000,
+                },
+                toolbar: ["bold", "italic", "heading", "|", "quote", "unordered-list", "ordered-list", "|", "link", "image", "|", "preview", "guide"]
+            });
+        }
+        
+        // Function to generate a response
+        function generateResponse($btn, reloadPage) {
+            // Store original button HTML
+            var originalButtonHtml = $btn.html();
+            
+            // Disable the button and show loading state
+            $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Generating...');
+            
+            // Hide any previous error messages
+            $('#generateError, #saveError').addClass('d-none');
+            
+            // Call the API to generate a response
+            $.ajax({
+                url: "{{ url_for('main.generate_response_api', ticket_id=ticket.id) }}",
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({}),
+                success: function(data) {
+                    console.log("Response generated successfully:", data);
+                    
+                    if (reloadPage) {
+                        // Reload the page to show the new response
+                        location.reload();
+                    } else {
+                        // Update the editor content without reloading the page
+                        if (data.response && data.response.content) {
+                            simplemde.value(data.response.content);
+                            
+                            // Show success message
+                            $('#saveSuccess').text('New response generated successfully!').removeClass('d-none');
+                            setTimeout(function() {
+                                $('#saveSuccess').addClass('d-none');
+                            }, 3000);
+                        }
+                        
+                        // Re-enable the button
+                        $btn.prop('disabled', false).html(originalButtonHtml);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error("Error generating response:", xhr, status, error);
+                    
+                    // Re-enable the button
+                    $btn.prop('disabled', false).html(originalButtonHtml);
+                    
+                    // Show error message
+                    var errorMsg = 'Error generating AI response.';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMsg = xhr.responseJSON.error;
+                    }
+                    
+                    // Show error in the appropriate container
+                    if ($('#generateError').length) {
+                        $('#generateErrorMessage').text(errorMsg);
+                        $('#generateError').removeClass('d-none');
+                    } else {
+                        $('#errorMessage').text(errorMsg);
+                        $('#saveError').removeClass('d-none');
+                    }
+                }
+            });
+        }
+        
+        // Function to generate tech instructions
+        function generateTechInstructions($btn) {
+            // Store original button HTML
+            var originalButtonHtml = $btn.html();
+            
+            // Disable the button and show loading state
+            $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Generating...');
+            
+            // Hide any previous error messages
+            $('#generateError, #saveError').addClass('d-none');
+            
+            // Call the API to generate tech instructions
+            $.ajax({
+                url: "{{ url_for('main.generate_tech_instructions_api', ticket_id=ticket.id) }}",
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({}),
+                success: function(data) {
+                    console.log("Tech instructions generated successfully:", data);
+                    
+                    // Reload the page to show the new response with tech instructions
+                    location.reload();
+                },
+                error: function(xhr, status, error) {
+                    console.error("Error generating tech instructions:", xhr, status, error);
+                    
+                    // Re-enable the button
+                    $btn.prop('disabled', false).html(originalButtonHtml);
+                    
+                    // Show error message
+                    var errorMsg = 'Error generating tech instructions.';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMsg = xhr.responseJSON.error;
+                    }
+                    
+                    // Show error in the appropriate container
+                    if ($('#generateError').length) {
+                        $('#generateErrorMessage').text(errorMsg);
+                        $('#generateError').removeClass('d-none');
+                    } else {
+                        $('#errorMessage').text(errorMsg);
+                        $('#saveError').removeClass('d-none');
+                    }
+                }
+            });
+        }
+        
+        // Generate initial AI response
+        $('#generateResponseBtn').click(function() {
+            generateResponse($(this), true); // true = reload page
+        });
+        
+        // Generate tech instructions
+        $('#generateTechInstructionsBtn').click(function() {
+            generateTechInstructions($(this));
+        });
+        
+        // Generate new response when regenerate button is clicked
+        $('#regenerateResponseBtn').click(function() {
+            generateResponse($(this), false); // false = don't reload page
+        });
+        
+        // Save response
+        $('#saveResponseBtn').click(function() {
+            var responseId = $('#responseId').val();
+            var content = simplemde.value();
+            
+            $.ajax({
+                url: "{{ url_for('main.update_response_api', response_id=0) }}".replace('0', responseId),
+                type: 'PUT',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    content: content
+                }),
+                success: function(data) {
+                    $('#saveSuccess').removeClass('d-none');
+                    setTimeout(function() {
+                        $('#saveSuccess').addClass('d-none');
+                    }, 3000);
+                },
+                error: function(xhr) {
+                    var errorMsg = 'Error saving response.';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMsg = xhr.responseJSON.error;
+                    }
+                    $('#errorMessage').text(errorMsg);
+                    $('#saveError').removeClass('d-none');
+                }
+            });
+        });
+        
+        // Toggle tech instructions visibility
+        $('#toggleTechInstructions').click(function() {
+            $('#techInstructionsContent').toggleClass('d-none');
+            
+            // Change icon based on visibility
+            var icon = $(this).find('i');
+            if ($('#techInstructionsContent').hasClass('d-none')) {
+                icon.removeClass('fa-eye-slash').addClass('fa-eye');
+            } else {
+                icon.removeClass('fa-eye').addClass('fa-eye-slash');
+            }
+        });
+        
+        // Toggle follow-up questions visibility
+        $('#toggleFollowUpQuestions').click(function() {
+            $('#followUpQuestionsContent').toggleClass('d-none');
+            
+            // Change icon based on visibility
+            var icon = $(this).find('i');
+            if ($('#followUpQuestionsContent').hasClass('d-none')) {
+                icon.removeClass('fa-eye-slash').addClass('fa-eye');
+            } else {
+                icon.removeClass('fa-eye').addClass('fa-eye-slash');
+            }
+        });
+        
+        // Insert follow-up questions into the response
+        $('#insertQuestionsBtn').click(function() {
+            if (simplemde) {
+                var currentContent = simplemde.value();
+                
+                // Get the questions from the list
+                var questions = [];
+                $('#followUpQuestionsContent ol li').each(function() {
+                    questions.push($(this).text());
+                });
+                
+                // Format the questions as a section to add to the response
+                var questionsText = "\n\nTo help me better assist you, could you please provide the following information:\n\n";
+                questions.forEach(function(q, i) {
+                    questionsText += (i+1) + ". " + q + "\n";
+                });
+                
+                // Append the questions to the current content
+                simplemde.value(currentContent + questionsText);
+                
+                // Show success message
+                $('#saveSuccess').text('Follow-up questions inserted!').removeClass('d-none');
+                setTimeout(function() {
+                    $('#saveSuccess').addClass('d-none');
+                }, 3000);
+            }
+        });
+        
+        // Send response to Freshdesk
+        $('#sendResponseBtn').click(function() {
+            var responseId = $('#responseId').val();
+            var content = simplemde.value();
+            
+            // Show sending modal
+            $('#sendingModal').modal('show');
+            
+            $.ajax({
+                url: "{{ url_for('main.send_response_api', response_id=0) }}".replace('0', responseId),
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    content: content
+                }),
+                success: function(data) {
+                    // Hide sending modal
+                    $('#sendingModal').modal('hide');
+                    
+                    // Show success modal
+                    $('#successModal').modal('show');
+                    
+                    // Reload the page after closing the success modal
+                    $('#successModal').on('hidden.bs.modal', function() {
+                        location.reload();
+                    });
+                },
+                error: function(xhr) {
+                    // Hide sending modal
+                    $('#sendingModal').modal('hide');
+                    
+                    var errorMsg = 'Error sending response to Freshdesk.';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMsg = xhr.responseJSON.error;
+                    }
+                    $('#errorMessage').text(errorMsg);
+                    $('#saveError').removeClass('d-none');
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}
